@@ -55,7 +55,14 @@ async def separate_audio(file: UploadFile = File(...), mode: str = "vocals"):
             command = ["python3", "-m", "demucs", "-o", OUTPUT_DIR, input_path]
         
         print(f"Running command: {' '.join(command)}")
-        # In actual use, subprocess.run(command, check=True)
+        
+        # In test mode without demucs installed, we skip the actual call
+        try:
+            subprocess.run(command, check=True)
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+            if HAS_ML: # If we expect ML to work, this is a real error
+                raise HTTPException(status_code=500, detail=f"Demucs failed: {str(e)}")
+            print("Skipping actual demucs call (Mock Mode)")
         
         song_name = os.path.splitext(file.filename)[0]
         base_output = os.path.join(OUTPUT_DIR, "htdemucs", song_name)
@@ -85,9 +92,12 @@ async def transcribe_vocals(vocals_path: str):
     Stage 3: Lyric Extraction & Alignment using Whisper.
     """
     try:
-        if not os.path.exists(vocals_path) and not HAS_ML:
-             return ProcessingStatus(status="success", message="Mock transcription.", output_files=["lyrics.json"])
+        if not HAS_ML:
+             return ProcessingStatus(status="success", message="Mock transcription (No ML installed).", output_files=["lyrics.json"])
              
+        if not os.path.exists(vocals_path):
+             raise HTTPException(status_code=404, detail="Vocals file not found")
+
         model = whisper.load_model("base", device=device)
         result = model.transcribe(vocals_path, verbose=False)
         
@@ -110,8 +120,12 @@ async def extract_pitch(audio_path: str, instrument: str = "vocals"):
     Uses librosa.pyin for monophonic pitch detection.
     """
     try:
-        if not os.path.exists(audio_path) and not HAS_ML:
-             return ProcessingStatus(status="success", message=f"Mock {instrument} pitch extraction.", output_files=["pitch.json"])
+        # We always have librosa as it's a hard requirement now
+        if not os.path.exists(audio_path):
+            if not HAS_ML:
+                return ProcessingStatus(status="success", message=f"Mock {instrument} pitch extraction.", output_files=["pitch.json"])
+            else:
+                raise HTTPException(status_code=404, detail="Audio file not found")
 
         y, sr = librosa.load(audio_path, sr=22050)
         f0, voiced_flag, voiced_probs = librosa.pyin(
