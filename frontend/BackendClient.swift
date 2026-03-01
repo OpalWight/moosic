@@ -10,8 +10,8 @@ class BackendClient: ObservableObject {
         let output_files: [String]
     }
     
-    func uploadAndSeparate(fileURL: URL) async throws -> ProcessingResponse {
-        guard let url = URL(string: "\(baseURL)/separate") else {
+    func uploadAndSeparate(fileURL: URL, mode: String = "vocals") async throws -> ProcessingResponse {
+        guard let url = URL(string: "\(baseURL)/separate?mode=\(mode)") else {
             throw URLError(.badURL)
         }
         
@@ -24,17 +24,11 @@ class BackendClient: ObservableObject {
         let fileData = try Data(contentsOf: fileURL)
         var body = Data()
         
-        body.append("--\(boundary)
-".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name="file"; filename="\(fileURL.lastPathComponent)"
-".data(using: .utf8)!)
-        body.append("Content-Type: audio/wav
-
-".data(using: .utf8)!)
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(fileURL.lastPathComponent)\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: audio/wav\r\n\r\n".data(using: .utf8)!)
         body.append(fileData)
-        body.append("
---\(boundary)--
-".data(using: .utf8)!)
+        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
         
         let (data, response) = try await URLSession.shared.upload(for: request, from: body)
         
@@ -45,8 +39,9 @@ class BackendClient: ObservableObject {
         return try JSONDecoder().decode(ProcessingResponse.self, from: data)
     }
     
-    func transcribeVocals(filename: String) async throws -> ProcessingResponse {
-        guard let url = URL(string: "\(baseURL)/transcribe?filename=\(filename)") else {
+    func transcribeVocals(vocalsPath: String) async throws -> ProcessingResponse {
+        guard let encodedPath = vocalsPath.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let url = URL(string: "\(baseURL)/transcribe?vocals_path=\(encodedPath)") else {
             throw URLError(.badURL)
         }
         
@@ -62,8 +57,9 @@ class BackendClient: ObservableObject {
         return try JSONDecoder().decode(ProcessingResponse.self, from: data)
     }
     
-    func extractPitch(filename: String) async throws -> ProcessingResponse {
-        guard let url = URL(string: "\(baseURL)/extract-pitch?filename=\(filename)") else {
+    func extractPitch(audioPath: String, instrument: String = "vocals") async throws -> ProcessingResponse {
+        guard let encodedPath = audioPath.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let url = URL(string: "\(baseURL)/extract-pitch?audio_path=\(encodedPath)&instrument=\(instrument)") else {
             throw URLError(.badURL)
         }
         

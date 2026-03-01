@@ -14,11 +14,22 @@ struct ContentView: View {
     @State private var targetHistory: [PitchPoint] = []
     @State private var liveHistory: [PitchPoint] = []
     
+    @State private var selectedInstrument = "vocals"
+    let instruments = ["vocals", "piano", "guitar"]
+    
     var body: some View {
         VStack(spacing: 20) {
             HeaderView(statusMessage: statusMessage, isProcessing: isProcessing)
             
             if !isProcessing {
+                Picker("Training Mode", selection: $selectedInstrument) {
+                    ForEach(instruments, id: \.self) { inst in
+                        Text(inst.capitalized).tag(inst)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 300)
+                
                 ImportButton(showingFilePicker: $showingFilePicker)
             }
             
@@ -75,29 +86,40 @@ struct ContentView: View {
     
     private func processFile(at url: URL) {
         isProcessing = true
-        statusMessage = "1/3: Separating Vocals..."
+        statusMessage = "1/3: Separating \(selectedInstrument.capitalized)..."
         
         Task {
             do {
-                let sepResult = try await BackendClient.shared.uploadAndSeparate(fileURL: url)
-                guard let vocalsPath = sepResult.output_files.first(where: { $0.contains("vocals.wav") }) else {
-                    throw NSError(domain: "Moosic", code: 1, userInfo: [NSLocalizedDescriptionKey: "Vocals not found"])
+                // Stage 1: Separate (Use 4-stem mode for instruments)
+                let mode = selectedInstrument == "vocals" ? "vocals" : "4-stem"
+                let sepResult = try await BackendClient.shared.uploadAndSeparate(fileURL: url, mode: mode)
+                
+                // Identify the correct stem path
+                let stemName = selectedInstrument == "vocals" ? "vocals.wav" : "other.wav" 
+                
+                guard let targetPath = sepResult.output_files.first(where: { $0.contains(stemName) }) else {
+                    throw NSError(domain: "Moosic", code: 1, userInfo: [NSLocalizedDescriptionKey: "\(selectedInstrument.capitalized) not found"])
                 }
                 
-                await MainActor.run { statusMessage = "2/3: Transcribing Lyrics..." }
-                _ = try await BackendClient.shared.transcribeVocals(vocalsPath: vocalsPath)
+                // Stage 2: Transcribe (Only for vocals)
+                if selectedInstrument == "vocals" {
+                    await MainActor.run { statusMessage = "2/3: Transcribing Lyrics..." }
+                    _ = try await BackendClient.shared.transcribeVocals(vocalsPath: targetPath)
+                } else {
+                    await MainActor.run { statusMessage = "2/3: Skipping Transcription..." }
+                }
                 
+                // Stage 3: Pitch
                 await MainActor.run { statusMessage = "3/3: Extracting Pitch..." }
-                let pitchResult = try await BackendClient.shared.extractPitch(vocalsPath: vocalsPath)
+                let pitchResult = try await BackendClient.shared.extractPitch(audioPath: targetPath, instrument: selectedInstrument)
                 
-                // For simulation, let's assume local access to output files
                 if let pitchFile = pitchResult.output_files.first {
                     pitchManager.loadPitchData(from: URL(fileURLWithPath: pitchFile))
                 }
                 
                 await MainActor.run {
                     isProcessing = false
-                    statusMessage = "Analysis complete! Ready to sing."
+                    statusMessage = "\(selectedInstrument.capitalized) ready for training!"
                     try? audioEngine.start()
                 }
             } catch {

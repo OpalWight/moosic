@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 import os
 import io
-from VocalizeNative.backend.main import app
+from moosic.backend.main import app
 
 client = TestClient(app)
 
@@ -16,17 +16,18 @@ def test_separate_endpoint():
     file_name = "test_song.wav"
     files = {"file": (file_name, io.BytesIO(file_content), "audio/wav")}
     
-    response = client.post("/separate", files=files)
+    response = client.post("/separate?mode=vocals", files=files)
     assert response.status_code == 200
     assert response.json()["status"] == "success"
-    assert "vocals.wav" in response.json()["output_files"]
+    assert any("vocals.wav" in f for f in response.json()["output_files"])
 
 def test_transcribe_endpoint():
-    response = client.post("/transcribe?filename=vocals.wav")
+    response = client.post("/transcribe?vocals_path=vocals.wav")
     assert response.status_code == 200
-    assert "lyrics.json" in response.json()["output_files"]
+    assert any("lyrics.json" in f for f in response.json()["output_files"])
 
 def test_extract_pitch_endpoint():
-    response = client.post("/extract-pitch?filename=vocals.wav")
+    # Parameter name is now 'audio_path'
+    response = client.post("/extract-pitch?audio_path=vocals.wav&instrument=vocals")
     assert response.status_code == 200
-    assert "pitch_data.json" in response.json()["output_files"]
+    assert any("pitch.json" in f for f in response.json()["output_files"])
