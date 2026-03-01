@@ -2,44 +2,31 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct ContentView: View {
+    @StateObject private var audioEngine = AudioEngineManager()
+    @StateObject private var pitchManager = PitchManager()
+    @StateObject private var gradingManager = GradingManager()
+    
     @State private var isProcessing = false
-    @State private var statusMessage = "Welcome to VocalizeNative"
+    @State private var statusMessage = "Welcome to Moosic"
     @State private var showingFilePicker = false
+    @State private var currentTime: TimeInterval = 0.0
     
     var body: some View {
         VStack(spacing: 20) {
-            Text("VocalizeNative")
-                .font(.largeTitle)
-                .fontWeight(.bold)
+            HeaderView(statusMessage: statusMessage, isProcessing: isProcessing)
             
-            if isProcessing {
-                ProgressView("Analyzing your song...")
-            } else {
-                Button(action: { showingFilePicker = true }) {
-                    Label("Import Audio File", systemImage: "music.note.list")
-                        .padding()
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
+            if !isProcessing {
+                ImportButton(showingFilePicker: $showingFilePicker)
             }
             
-            Text(statusMessage)
-                .foregroundColor(.secondary)
+            PitchVisualizer(targetPitch: pitchManager.targetPitch, livePitch: audioEngine.livePitch, accuracy: gradingManager.lastAccuracy)
+            
+            ScoreView(score: gradingManager.currentScore)
             
             Spacer()
-            
-            // Placeholder for real-time training UI
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Color.gray.opacity(0.1))
-                .overlay(
-                    Text("Lyrics and Pitch Bars will appear here")
-                        .foregroundColor(.gray)
-                )
-                .frame(height: 300)
         }
         .padding(40)
-        .frame(minWidth: 600, minHeight: 500)
+        .frame(minWidth: 800, minHeight: 600)
         .fileImporter(
             isPresented: $showingFilePicker,
             allowedContentTypes: [.audio, .mp3, .wav, .mpeg4Audio],
@@ -47,6 +34,16 @@ struct ContentView: View {
         ) { result in
             handleFileImport(result: result)
         }
+        .onReceive(Timer.publish(every: 0.05, on: .main, in: .common).autoconnect()) { _ in
+            updateTrainingState()
+        }
+    }
+    
+    private func updateTrainingState() {
+        // In a real app, this would get the actual playback time from the player
+        currentTime += 0.05
+        pitchManager.updateTargetPitch(forTime: currentTime)
+        gradingManager.gradePitch(live: audioEngine.livePitch, target: pitchManager.targetPitch)
     }
     
     private func handleFileImport(result: Result<[URL], Error>) {
@@ -65,24 +62,26 @@ struct ContentView: View {
         
         Task {
             do {
-                // Stage 1: Separate
                 let sepResult = try await BackendClient.shared.uploadAndSeparate(fileURL: url)
                 guard let vocalsPath = sepResult.output_files.first(where: { $0.contains("vocals.wav") }) else {
-                    throw NSError(domain: "VocalizeNative", code: 1, userInfo: [NSLocalizedDescriptionKey: "Vocals not found"])
+                    throw NSError(domain: "Moosic", code: 1, userInfo: [NSLocalizedDescriptionKey: "Vocals not found"])
                 }
                 
-                // Stage 2: Transcribe
                 await MainActor.run { statusMessage = "2/3: Transcribing Lyrics..." }
-                let transResult = try await BackendClient.shared.transcribeVocals(vocalsPath: vocalsPath)
+                _ = try await BackendClient.shared.transcribeVocals(vocalsPath: vocalsPath)
                 
-                // Stage 3: Pitch
                 await MainActor.run { statusMessage = "3/3: Extracting Pitch..." }
                 let pitchResult = try await BackendClient.shared.extractPitch(vocalsPath: vocalsPath)
+                
+                // For simulation, let's assume local access to output files
+                if let pitchFile = pitchResult.output_files.first {
+                    pitchManager.loadPitchData(from: URL(fileURLWithPath: pitchFile))
+                }
                 
                 await MainActor.run {
                     isProcessing = false
                     statusMessage = "Analysis complete! Ready to sing."
-                    // Here we would load the data into the AudioEngine and UI
+                    try? audioEngine.start()
                 }
             } catch {
                 await MainActor.run {
@@ -91,6 +90,93 @@ struct ContentView: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - Subviews
+struct HeaderView: View {
+    let statusMessage: String
+    let isProcessing: Bool
+    
+    var body: some View {
+        VStack {
+            Text("Moosic")
+                .font(.system(size: 32, weight: .black, design: .rounded))
+            if isProcessing {
+                ProgressView()
+                    .padding()
+            }
+            Text(statusMessage)
+                .foregroundColor(.secondary)
+        }
+    }
+}
+
+struct ImportButton: View {
+    @Binding var showingFilePicker: Bool
+    
+    var body: some View {
+        Button(action: { showingFilePicker = true }) {
+            Label("Import Audio File", systemImage: "music.note.list")
+                .font(.headline)
+                .padding()
+                .frame(maxWidth: 300)
+        }
+        .buttonStyle(.borderedProminent)
+        .controlSize(.large)
+    }
+}
+
+struct PitchVisualizer: View {
+    let targetPitch: Float
+    let livePitch: Float
+    let accuracy: Double
+    
+    var body: some View {
+        HStack(spacing: 40) {
+            PitchBar(label: "Target", frequency: targetPitch, color: .blue)
+            PitchBar(label: "Live", frequency: livePitch, color: accuracy > 0.5 ? .green : .red)
+        }
+        .frame(height: 250)
+        .padding()
+        .background(Color.black.opacity(0.05))
+        .cornerRadius(20)
+    }
+}
+
+struct PitchBar: View {
+    let label: String
+    let frequency: Float
+    let color: Color
+    
+    var body: some View {
+        VStack {
+            Text(label).font(.caption).bold()
+            ZStack(alignment: .bottom) {
+                Capsule().fill(Color.gray.opacity(0.1))
+                Capsule()
+                    .fill(color)
+                    .frame(height: CGFloat(min(frequency / 10, 200))) // Simple normalization
+                    .animation(.spring(), value: frequency)
+            }
+            .frame(width: 40)
+            Text("\(Int(frequency)) Hz").font(.caption2).monospacedDigit()
+        }
+    }
+}
+
+struct ScoreView: View {
+    let score: Double
+    
+    var body: some View {
+        HStack {
+            Image(systemName: "star.fill").foregroundColor(.yellow)
+            Text("Score: \(Int(score))")
+                .font(.title2)
+                .bold()
+        }
+        .padding()
+        .background(Capsule().fill(Color.white).shadow(radius: 2))
     }
 }
 
