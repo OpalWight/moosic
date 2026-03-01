@@ -3,11 +3,11 @@ uvicorn
 pydantic
 torch
 torchaudio
+torchcodec
 librosa
 numpy
 demucs
 openai-whisper
-# whisperx # Optional but recommended for better alignment
 python-multipart
 soundfile
 ffmpeg-python

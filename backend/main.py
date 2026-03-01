@@ -9,6 +9,9 @@ import librosa
 import soundfile as sf
 import json
 
+# Force torchaudio to use stable FFmpeg/SoX backends
+os.environ["TORCHAUDIO_USE_BACKEND_DISPATCHER"] = "1"
+
 # Optional ML Imports
 try:
     import torch
