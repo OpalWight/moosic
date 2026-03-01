@@ -16,10 +16,10 @@ Goal: Replace placeholder logic with functional local ML models (Demucs, Whisper
 - [x] **ML Integration - Transcription**: Integrated `OpenAI Whisper` with MPS support.
 - [x] **ML Integration - Pitch Extraction**: Integrated `librosa.pyin` for Hz tracking.
 - [x] **Accelerate Framework Integration**: Implemented high-performance FFT in Swift for live mic input.
+- [x] **Pitch Synchronization Logic**: Correlating backend pitch data with frontend playback time via `PitchManager`.
 
 ## In Progress
-- [ ] **Pitch Synchronization Logic**: Correlating backend pitch data with frontend playback time.
-- [ ] **UI Polish**: Displaying rolling lyrics and pitch curves.
+- [ ] **UI Polish**: Displaying rolling lyrics and pitch curves in `ContentView`.
 
 ## Upcoming
 - [ ] **Accelerate Framework Integration**: High-performance FFT in Swift.
