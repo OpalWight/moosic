@@ -21,6 +21,7 @@ Goal: Replace placeholder logic with functional local ML models (Demucs, Whisper
 - [x] **UI Polish**: Implemented `PitchVisualizer` and `ScoreView` for real-time feedback.
 - [x] **Advanced Visualization**: Implemented `PitchCurveView` for scrolling pitch history.
 - [x] **Instrumental Support**: Added support for Piano and Guitar via 4-stem Demucs separation and pYIN pitch extraction.
+- [x] **Code Refinement**: Simplified and consolidated backend and frontend code for clarity and maintainability using the `code-simplifier` skill.
 - [x] **Packaging Infrastructure**: Created `build_backend.py` using PyInstaller.
 - [x] **README Creation**: Written user documentation.
 

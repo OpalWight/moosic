@@ -13,55 +13,54 @@ struct ContentView: View {
     
     @State private var targetHistory: [PitchPoint] = []
     @State private var liveHistory: [PitchPoint] = []
-    
     @State private var selectedInstrument = "vocals"
-    let instruments = ["vocals", "piano", "guitar"]
+    
+    private let instruments = ["vocals", "piano", "guitar"]
+    private let updateInterval = 0.05
     
     var body: some View {
-        VStack(spacing: 20) {
-            HeaderView(statusMessage: statusMessage, isProcessing: isProcessing)
+        VStack(spacing: 24) {
+            StatusArea(message: statusMessage, isProcessing: isProcessing)
             
             if !isProcessing {
-                Picker("Training Mode", selection: $selectedInstrument) {
-                    ForEach(instruments, id: \.self) { inst in
-                        Text(inst.capitalized).tag(inst)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .frame(maxWidth: 300)
-                
+                InstrumentPicker(selected: $selectedInstrument, options: instruments)
                 ImportButton(showingFilePicker: $showingFilePicker)
             }
             
-            PitchCurveView(targetHistory: targetHistory, liveHistory: liveHistory, currentTime: currentTime)
-            
-            PitchVisualizer(targetPitch: pitchManager.targetPitch, livePitch: audioEngine.livePitch, accuracy: gradingManager.lastAccuracy)
-            
-            ScoreView(score: gradingManager.currentScore)
+            TrainingVisuals(
+                targetHistory: targetHistory,
+                liveHistory: liveHistory,
+                currentTime: currentTime,
+                targetPitch: pitchManager.targetPitch,
+                livePitch: audioEngine.livePitch,
+                accuracy: gradingManager.lastAccuracy,
+                score: gradingManager.currentScore
+            )
             
             Spacer()
         }
         .padding(40)
-        .frame(minWidth: 800, minHeight: 700)
+        .frame(minWidth: 800, minHeight: 750)
         .fileImporter(
             isPresented: $showingFilePicker,
             allowedContentTypes: [.audio, .mp3, .wav, .mpeg4Audio],
-            allowsMultipleSelection: false
-        ) { result in
-            handleFileImport(result: result)
-        }
-        .onReceive(Timer.publish(every: 0.05, on: .main, in: .common).autoconnect()) { _ in
+            allowsMultipleSelection: false,
+            onCompletion: handleFileImport
+        )
+        .onReceive(Timer.publish(every: updateInterval, on: .main, in: .common).autoconnect()) { _ in
             updateTrainingState()
         }
     }
     
     private func updateTrainingState() {
-        // In a real app, this would get the actual playback time from the player
-        currentTime += 0.05
+        currentTime += updateInterval
         pitchManager.updateTargetPitch(forTime: currentTime)
         gradingManager.gradePitch(live: audioEngine.livePitch, target: pitchManager.targetPitch)
         
-        // Track history for visualization
+        updateHistory()
+    }
+    
+    private func updateHistory() {
         if pitchManager.targetPitch > 0 {
             targetHistory.append(PitchPoint(time: currentTime, frequency: pitchManager.targetPitch))
         }
@@ -69,7 +68,7 @@ struct ContentView: View {
             liveHistory.append(PitchPoint(time: currentTime, frequency: audioEngine.livePitch))
         }
         
-        // Clean up old history to keep it performant
+        // Performance optimization: keep history window manageable
         if targetHistory.count > 500 { targetHistory.removeFirst() }
         if liveHistory.count > 500 { liveHistory.removeFirst() }
     }
@@ -77,148 +76,121 @@ struct ContentView: View {
     private func handleFileImport(result: Result<[URL], Error>) {
         switch result {
         case .success(let urls):
-            guard let url = urls.first else { return }
-            processFile(at: url)
+            if let url = urls.first { processFile(at: url) }
         case .failure(let error):
-            statusMessage = "Error: \(error.localizedDescription)"
+            statusMessage = "Import failed: \(error.localizedDescription)"
         }
     }
     
     private func processFile(at url: URL) {
         isProcessing = true
-        statusMessage = "1/3: Separating \(selectedInstrument.capitalized)..."
+        targetHistory = []
+        liveHistory = []
+        currentTime = 0
         
         Task {
             do {
-                // Stage 1: Separate (Use 4-stem mode for instruments)
-                let mode = selectedInstrument == "vocals" ? "vocals" : "4-stem"
+                let instrument = selectedInstrument
+                updateStatus("1/3: Separating \(instrument.capitalized)...")
+                
+                let mode = instrument == "vocals" ? "vocals" : "4-stem"
                 let sepResult = try await BackendClient.shared.uploadAndSeparate(fileURL: url, mode: mode)
                 
-                // Identify the correct stem path
-                let stemName = selectedInstrument == "vocals" ? "vocals.wav" : "other.wav" 
-                
+                let stemName = instrument == "vocals" ? "vocals.wav" : "other.wav"
                 guard let targetPath = sepResult.output_files.first(where: { $0.contains(stemName) }) else {
-                    throw NSError(domain: "Moosic", code: 1, userInfo: [NSLocalizedDescriptionKey: "\(selectedInstrument.capitalized) not found"])
+                    throw MoosicError.stemNotFound(instrument)
                 }
                 
-                // Stage 2: Transcribe (Only for vocals)
-                if selectedInstrument == "vocals" {
-                    await MainActor.run { statusMessage = "2/3: Transcribing Lyrics..." }
+                if instrument == "vocals" {
+                    updateStatus("2/3: Transcribing Lyrics...")
                     _ = try await BackendClient.shared.transcribeVocals(vocalsPath: targetPath)
-                } else {
-                    await MainActor.run { statusMessage = "2/3: Skipping Transcription..." }
                 }
                 
-                // Stage 3: Pitch
-                await MainActor.run { statusMessage = "3/3: Extracting Pitch..." }
-                let pitchResult = try await BackendClient.shared.extractPitch(audioPath: targetPath, instrument: selectedInstrument)
+                updateStatus("3/3: Extracting Pitch...")
+                let pitchResult = try await BackendClient.shared.extractPitch(audioPath: targetPath, instrument: instrument)
                 
                 if let pitchFile = pitchResult.output_files.first {
                     pitchManager.loadPitchData(from: URL(fileURLWithPath: pitchFile))
                 }
                 
-                await MainActor.run {
-                    isProcessing = false
-                    statusMessage = "\(selectedInstrument.capitalized) ready for training!"
-                    try? audioEngine.start()
-                }
+                completeProcessing(message: "\(instrument.capitalized) analysis complete!")
             } catch {
-                await MainActor.run {
-                    isProcessing = false
-                    statusMessage = "Error: \(error.localizedDescription)"
-                }
+                handleError(error)
             }
+        }
+    }
+    
+    private func updateStatus(_ message: String) {
+        Task { @MainActor in statusMessage = message }
+    }
+    
+    private func completeProcessing(message: String) {
+        Task { @MainActor in
+            isProcessing = false
+            statusMessage = message
+            try? audioEngine.start()
+        }
+    }
+    
+    private func handleError(_ error: Error) {
+        Task { @MainActor in
+            isProcessing = false
+            statusMessage = "Error: \(error.localizedDescription)"
         }
     }
 }
 
-// MARK: - Subviews
-struct HeaderView: View {
-    let statusMessage: String
+// MARK: - Components
+
+struct StatusArea: View {
+    let message: String
     let isProcessing: Bool
     
     var body: some View {
-        VStack {
-            Text("Moosic")
-                .font(.system(size: 32, weight: .black, design: .rounded))
-            if isProcessing {
-                ProgressView()
-                    .padding()
-            }
-            Text(statusMessage)
-                .foregroundColor(.secondary)
+        VStack(spacing: 8) {
+            Text("Moosic").font(.system(size: 32, weight: .black, design: .rounded))
+            if isProcessing { ProgressView().padding(.vertical, 4) }
+            Text(message).foregroundColor(.secondary).multilineTextAlignment(.center)
         }
     }
 }
 
-struct ImportButton: View {
-    @Binding var showingFilePicker: Bool
+struct InstrumentPicker: View {
+    @Binding var selected: String
+    let options: [String]
     
     var body: some View {
-        Button(action: { showingFilePicker = true }) {
-            Label("Import Audio File", systemImage: "music.note.list")
-                .font(.headline)
-                .padding()
-                .frame(maxWidth: 300)
+        Picker("Training Mode", selection: $selected) {
+            ForEach(options, id: \.self) { Text($0.capitalized).tag($0) }
         }
-        .buttonStyle(.borderedProminent)
-        .controlSize(.large)
+        .pickerStyle(.segmented)
+        .frame(maxWidth: 300)
     }
 }
 
-struct PitchVisualizer: View {
+struct TrainingVisuals: View {
+    let targetHistory: [PitchPoint]
+    let liveHistory: [PitchPoint]
+    let currentTime: Double
     let targetPitch: Float
     let livePitch: Float
     let accuracy: Double
-    
-    var body: some View {
-        HStack(spacing: 40) {
-            PitchBar(label: "Target", frequency: targetPitch, color: .blue)
-            PitchBar(label: "Live", frequency: livePitch, color: accuracy > 0.5 ? .green : .red)
-        }
-        .frame(height: 250)
-        .padding()
-        .background(Color.black.opacity(0.05))
-        .cornerRadius(20)
-    }
-}
-
-struct PitchBar: View {
-    let label: String
-    let frequency: Float
-    let color: Color
-    
-    var body: some View {
-        VStack {
-            Text(label).font(.caption).bold()
-            ZStack(alignment: .bottom) {
-                Capsule().fill(Color.gray.opacity(0.1))
-                Capsule()
-                    .fill(color)
-                    .frame(height: CGFloat(min(frequency / 10, 200))) // Simple normalization
-                    .animation(.spring(), value: frequency)
-            }
-            .frame(width: 40)
-            Text("\(Int(frequency)) Hz").font(.caption2).monospacedDigit()
-        }
-    }
-}
-
-struct ScoreView: View {
     let score: Double
     
     var body: some View {
-        HStack {
-            Image(systemName: "star.fill").foregroundColor(.yellow)
-            Text("Score: \(Int(score))")
-                .font(.title2)
-                .bold()
+        VStack(spacing: 20) {
+            PitchCurveView(targetHistory: targetHistory, liveHistory: liveHistory, currentTime: currentTime)
+            PitchVisualizer(targetPitch: targetPitch, livePitch: livePitch, accuracy: accuracy)
+            ScoreView(score: score)
         }
-        .padding()
-        .background(Capsule().fill(Color.white).shadow(radius: 2))
     }
 }
 
-#Preview {
-    ContentView()
+enum MoosicError: LocalizedError {
+    case stemNotFound(String)
+    var errorDescription: String? {
+        switch self {
+        case .stemNotFound(let inst): return "\(inst.capitalized) stem not found in separation output."
+        }
+    }
 }

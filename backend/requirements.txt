@@ -8,7 +8,6 @@ numpy
 demucs
 openai-whisper
 # whisperx # Optional but recommended for better alignment
-crepe
 python-multipart
 soundfile
 ffmpeg-python
