@@ -11,6 +11,9 @@ struct ContentView: View {
     @State private var showingFilePicker = false
     @State private var currentTime: TimeInterval = 0.0
     
+    @State private var targetHistory: [PitchPoint] = []
+    @State private var liveHistory: [PitchPoint] = []
+    
     var body: some View {
         VStack(spacing: 20) {
             HeaderView(statusMessage: statusMessage, isProcessing: isProcessing)
@@ -19,6 +22,8 @@ struct ContentView: View {
                 ImportButton(showingFilePicker: $showingFilePicker)
             }
             
+            PitchCurveView(targetHistory: targetHistory, liveHistory: liveHistory, currentTime: currentTime)
+            
             PitchVisualizer(targetPitch: pitchManager.targetPitch, livePitch: audioEngine.livePitch, accuracy: gradingManager.lastAccuracy)
             
             ScoreView(score: gradingManager.currentScore)
@@ -26,7 +31,7 @@ struct ContentView: View {
             Spacer()
         }
         .padding(40)
-        .frame(minWidth: 800, minHeight: 600)
+        .frame(minWidth: 800, minHeight: 700)
         .fileImporter(
             isPresented: $showingFilePicker,
             allowedContentTypes: [.audio, .mp3, .wav, .mpeg4Audio],
@@ -44,6 +49,18 @@ struct ContentView: View {
         currentTime += 0.05
         pitchManager.updateTargetPitch(forTime: currentTime)
         gradingManager.gradePitch(live: audioEngine.livePitch, target: pitchManager.targetPitch)
+        
+        // Track history for visualization
+        if pitchManager.targetPitch > 0 {
+            targetHistory.append(PitchPoint(time: currentTime, frequency: pitchManager.targetPitch))
+        }
+        if audioEngine.livePitch > 0 {
+            liveHistory.append(PitchPoint(time: currentTime, frequency: audioEngine.livePitch))
+        }
+        
+        // Clean up old history to keep it performant
+        if targetHistory.count > 500 { targetHistory.removeFirst() }
+        if liveHistory.count > 500 { liveHistory.removeFirst() }
     }
     
     private func handleFileImport(result: Result<[URL], Error>) {
