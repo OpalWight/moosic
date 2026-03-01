@@ -15,15 +15,15 @@ VocalizeNative is a decoupled architecture consisting of a **macOS Native Fronte
 
 ## 3. Data Flow
 ### 3.1 Initial Import (The "Cold" Path)
-1. **User** selects a file in SwiftUI.
-2. **Swift** sends the file to the local Python server via `POST /separate`.
-3. **Python (Demucs)** splits the file into `vocals.wav` and `no_vocals.wav`.
-4. **Python (Whisper)** transcribes `vocals.wav` into `lyrics.json` (timestamped).
-5. **Python (Librosa)** extracts pitch into `pitch.json` (Hz array).
-6. **Swift** downloads/receives paths to these 3 assets.
+1. **User** selects a file and instrument (vocals, piano, guitar) in SwiftUI.
+2. **Swift** sends the file and instrument to the local Python server via `POST /process?instrument={type}`.
+3. **Python (Demucs)** splits the file into stems and saves them in `output_files/{song_name}_{instrument}/`.
+4. **Python (Whisper)** transcribes `vocals.wav` into `lyrics.json` (if instrument is vocals).
+5. **Python (Librosa)** extracts pitch into `pitch.json` for the target instrument.
+6. **Swift** receives a single JSON response containing URLs to all generated assets.
 
 ### 3.2 Live Training (The "Hot" Path)
-1. **Swift (AVAudioEngine)** plays `no_vocals.wav`.
+1. **Swift (AVAudioEngine)** plays the backing track (`backing.wav`).
 2. **Swift (AVAudioEngine)** captures live microphone input.
 3. **Swift (Accelerate)** performs a Fast Fourier Transform (FFT) every ~20ms on the mic buffer to determine the current frequency (Hz).
 4. **Grading Logic** compares the live frequency against the corresponding timestamp in `pitch.json`.

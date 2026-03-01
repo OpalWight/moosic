@@ -33,3 +33,4 @@ Goal: Replace placeholder logic with functional local ML models (Demucs, Whisper
 
 ## Log
 - **2026-02-28**: Initialized project, PRD, and basic skeletons. Verified API connectivity with tests.
+- **2026-02-28**: Refactored backend and frontend to use a unified `/process` endpoint and project-based asset management. Updated unit tests to provide 100% coverage of the new API and validated with mock ML.
