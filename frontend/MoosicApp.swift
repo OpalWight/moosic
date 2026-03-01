@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct VocalizeNativeApp: App {
+struct MoosicApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
