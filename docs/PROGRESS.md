@@ -19,14 +19,12 @@ Goal: Replace placeholder logic with functional local ML models (Demucs, Whisper
 - [x] **Pitch Synchronization Logic**: Correlating backend pitch data with frontend playback time via `PitchManager`.
 - [x] **Real-time Grading Logic**: Implemented `GradingManager` for scoring user pitch accuracy.
 - [x] **UI Polish**: Implemented `PitchVisualizer` and `ScoreView` for real-time feedback.
+- [x] **README Creation**: Written user documentation.
 
-## In Progress
-- [ ] **README Creation**: Writing user documentation.
-
-## Upcoming
-- [ ] **Accelerate Framework Integration**: High-performance FFT in Swift.
-- [ ] **Real-time Grading Logic**: Scoring user pitch against target pitch.
-- [ ] **Packaging**: Bundling Python with PyInstaller.
+## Next Steps
+- [ ] **Packaging**: Bundling Python with PyInstaller for one-click installation.
+- [ ] **App Entitlements**: Finalizing sandboxing and permissions.
+- [ ] **Advanced Visualization**: Waveform scrolling for pitch curves.
 
 ---
 
