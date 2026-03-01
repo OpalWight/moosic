@@ -40,9 +40,6 @@
 
 4. **Launch the Frontend**:
    Open `moosic/Moosic/Moosic.xcodeproj` in Xcode.
-   - Delete the default `ContentView.swift` and `MoosicApp.swift` in the project navigator.
-   - Right-click the project folder in Xcode and select "Add Files to 'Moosic'...".
-   - Select all files from the `moosic/frontend/` directory.
    - Run the project.
 
 ## 🛠 How It Works
