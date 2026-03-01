@@ -13,11 +13,12 @@ import json
 try:
     import torch
     import whisper
+    import demucs
     HAS_ML = True
 except ImportError:
     HAS_ML = False
 
-# Force HAS_ML to False if running in a known restricted environment or if requested via env
+# Force HAS_ML to False if running in a known restricted environment
 if os.environ.get("MOOSIC_MOCK_ML") == "1":
     HAS_ML = False
 
@@ -42,14 +43,22 @@ def get_song_output_dir(filename: str) -> str:
     return os.path.join(OUTPUT_DIR, "htdemucs", song_name)
 
 def run_ml_command(command: List[str]) -> None:
-    """Runs an ML command or logs a mock message if ML is not fully supported."""
+    """Runs an ML command with detailed error reporting."""
     print(f"Executing: {' '.join(command)}")
     try:
-        subprocess.run(command, check=True)
-    except (subprocess.CalledProcessError, FileNotFoundError, ImportError) as e:
+        # Try running with captured output to provide better error messages
+        result = subprocess.run(command, capture_output=True, text=True)
+        if result.returncode != 0:
+            error_msg = result.stderr if result.stderr else "Unknown error"
+            print(f"ML Command failed: {error_msg}")
+            if HAS_ML:
+                raise HTTPException(status_code=500, detail=f"ML process failed: {error_msg[:200]}")
+    except FileNotFoundError:
+        msg = "Demucs or FFmpeg not found in system PATH."
+        print(f"Error: {msg}")
         if HAS_ML:
-            raise HTTPException(status_code=500, detail=f"ML process failed: {str(e)}")
-        print(f"Mock Mode: Command skipped ({e})")
+            raise HTTPException(status_code=500, detail=msg)
+        print("Mock Mode: Continuing without execution.")
 
 @app.get("/")
 async def health_check():
@@ -63,6 +72,10 @@ async def separate_audio(file: UploadFile = File(...), mode: str = "vocals"):
         with open(input_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
         
+        # Check for ffmpeg as it's required by demucs
+        if HAS_ML and shutil.which("ffmpeg") is None:
+            raise HTTPException(status_code=500, detail="FFmpeg is not installed. Run 'brew install ffmpeg'.")
+
         command = ["python3", "-m", "demucs", "-o", OUTPUT_DIR]
         if mode == "vocals":
             command += ["--two-stems", "vocals"]
@@ -76,6 +89,10 @@ async def separate_audio(file: UploadFile = File(...), mode: str = "vocals"):
         
         output_files = [os.path.join(base_output, stem) for stem in stems]
         
+        # Verify that files were actually created if not in mock mode
+        if HAS_ML and not any(os.path.exists(f) for f in output_files):
+            raise HTTPException(status_code=500, detail="Demucs finished but no output files were found.")
+
         return ProcessingStatus(
             status="success",
             message=f"Separation complete ({mode}) for {file.filename}.",
@@ -89,7 +106,7 @@ async def separate_audio(file: UploadFile = File(...), mode: str = "vocals"):
 async def transcribe_vocals(vocals_path: str):
     """Stage 3: Lyric Extraction using Whisper."""
     if not HAS_ML or not os.path.exists(vocals_path):
-        msg = "Mock transcription." if not HAS_ML else "File not found, using mock for stability."
+        msg = "Mock transcription." if not HAS_ML else "File not found, using mock."
         return ProcessingStatus(status="success", message=msg, output_files=["lyrics.json"])
 
     try:
@@ -102,13 +119,13 @@ async def transcribe_vocals(vocals_path: str):
             
         return ProcessingStatus(status="success", message="Transcription complete.", output_files=[json_path])
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
 
 @app.post("/extract-pitch", response_model=ProcessingStatus)
 async def extract_pitch(audio_path: str, instrument: str = "vocals"):
     """Stage 4: Pitch Extraction using librosa.pyin."""
     if not os.path.exists(audio_path):
-        return ProcessingStatus(status="success", message=f"Mock {instrument} pitch (file not found).", output_files=["pitch.json"])
+        return ProcessingStatus(status="success", message=f"Mock {instrument} pitch.", output_files=["pitch.json"])
 
     try:
         y, sr = librosa.load(audio_path, sr=22050)
@@ -122,7 +139,7 @@ async def extract_pitch(audio_path: str, instrument: str = "vocals"):
             
         return ProcessingStatus(status="success", message=f"Pitch extraction complete for {instrument}.", output_files=[json_path])
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Pitch extraction failed: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn
