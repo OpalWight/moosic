@@ -6,6 +6,7 @@ torchaudio
 torchcodec
 librosa
 numpy
+scipy
 demucs
 openai-whisper
 python-multipart

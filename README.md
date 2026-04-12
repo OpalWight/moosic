@@ -1,16 +1,15 @@
-# 🐮 Moosic: Local & Private Vocal Training
+# Moosic: Vocal Training
 
-**Moosic** is a completely local, open-source macOS app for vocal training. It uses advanced Machine Learning to analyze your favorite songs and provide real-time feedback on your singing performance—all without ever sending your data to the cloud.
+Moosic is an open-source macOS app for vocal training. It uses advanced Machine Learning to analyze songs and provide real-time feedback on your singing performance.
 
-## ✨ Features
+## Features
 
-- **Local Source Separation**: Automatically split any song (MP3, WAV, M4A) into high-quality vocals and instrumentals using Meta's Demucs.
-- **Smart Transcription**: Local lyric extraction with word-level timestamps via OpenAI's Whisper.
+- **Source Separation**: Automatically split any song (MP3, WAV, M4A) into high-quality vocals and instrumentals using Meta's Demucs.
+- **Smart Transcription**: Lyric extraction with word-level timestamps via OpenAI's Whisper.
 - **High-Precision Pitch Tracking**: Real-time Hz analysis using the Apple Accelerate framework for zero-latency feedback.
-- **Privacy First**: No internet connection required after initial setup. Your recordings and files stay on your Mac.
 - **Interactive Grading**: Get real-time accuracy scores and visual feedback on your pitch.
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 - **macOS 14 (Sonoma)** or newer.
@@ -42,7 +41,7 @@
    Open `moosic/Moosic/Moosic.xcodeproj` in Xcode.
    - Run the project.
 
-## 🏗 Architecture
+## Architecture
 
 ```text
 +-------------------------------------------------+
@@ -72,15 +71,12 @@
 +-------------------------------------------------+
 ```
 
-## 🛠 How It Works
+## How It Works
 
 1. **Import**: Drag and drop your audio file.
-2. **Analyze**: The local Python server separates stems, transcribes lyrics, and maps the target pitch.
+2. **Analyze**: The Python server separates stems, transcribes lyrics, and maps the target pitch.
 3. **Sing**: The app plays the instrumental track while tracking your voice through the microphone.
 4. **Learn**: Follow the visual pitch bars and improve your accuracy with real-time scoring.
 
-## 🔒 Privacy Guarantee
-Moosic is designed to be incapable of transmitting your files. It binds its internal server to `localhost` and does not request external network entitlements.
-
-## 📜 License
+## License
 Open-source under the MIT License.

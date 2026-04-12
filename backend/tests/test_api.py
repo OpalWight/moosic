@@ -73,6 +73,29 @@ def test_process_with_unsupported_instrument():
     assert response.json()["instrument"] == "piano"
     assert "lyrics" not in response.json()["assets"] # No lyrics for piano
 
+def test_delete_song_endpoint():
+    # 1. Process a song to ensure it exists
+    file_content = b"fake audio data"
+    file_name = "to_delete.wav"
+    files = {"file": (file_name, io.BytesIO(file_content), "audio/wav")}
+    client.post("/process?instrument=vocals", files=files)
+    
+    # 2. Verify it's in the list
+    response = client.get("/songs")
+    songs = response.json()
+    song_id = next((s["id"] for s in songs if s["name"] == "to_delete"), None)
+    assert song_id is not None
+    
+    # 3. Delete it
+    delete_res = client.delete(f"/songs/{song_id}")
+    assert delete_res.status_code == 200
+    assert delete_res.json()["status"] == "success"
+    
+    # 4. Verify it's gone
+    response = client.get("/songs")
+    songs = response.json()
+    assert not any(s["id"] == song_id for s in songs)
+
 def test_progress_manager():
     pm = ProgressManager()
     pm.update("Test Task", "Doing something", 50)
